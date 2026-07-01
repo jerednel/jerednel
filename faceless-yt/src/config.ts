@@ -37,6 +37,9 @@ export const config = {
     fps: Number(process.env.VIDEO_FPS) || 30,
     fontFile:
       process.env.FONT_FILE || "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    // Optional background music bed. Drop in a royalty-free track and set the path.
+    musicFile: process.env.MUSIC_FILE || "",
+    musicVolume: Number(process.env.MUSIC_VOLUME) || 0.12,
   },
 
   // ⑤ publish — YouTube

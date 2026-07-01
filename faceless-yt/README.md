@@ -19,7 +19,7 @@ START → ① ideate → ② narrate → ③ visualize → ④ assemble → ⑤ 
 | ① ideate    | topic → title, description, tags, hook, scenes   | Anthropic / OpenAI / Google |
 | ② narrate   | script → per-scene voiceover + timing            | ElevenLabs                  |
 | ③ visualize | scenes → image/b-roll prompts + assets           | Flux / stock (stub)         |
-| ④ assemble  | images + audio + captions → rendered `video.mp4`  | ffmpeg                      |
+| ④ assemble  | crop-to-fill + Ken Burns + captions + music → MP4 | ffmpeg                      |
 | ⑤ publish   | upload as draft/scheduled                        | YouTube Data API (stub)     |
 
 It's a `StateGraph`, so adding a human-review node between `ideate` and
@@ -43,9 +43,17 @@ its key is present, else fall back to mock.
 
 ## Quick start
 
+Web UI (type a topic, watch it build, preview/download):
+
 ```bash
 cd faceless-yt
 npm install
+npm run serve                     # → http://localhost:3000
+```
+
+Or the CLI:
+
+```bash
 npm run demo                      # runs fully in mock mode, zero keys needed
 # or:
 npx tsx src/cli.ts "The history of the paperclip"
@@ -75,15 +83,18 @@ out/<slug>/
 
 ## Roadmap (MVP → product)
 
-1. **MVP (this scaffold):** topic → script → storyboard → rendered MP4. ✅
-2. Wire real ElevenLabs (`narrate`) + Flux (`visualize`) into the existing
-   asset slots → the placeholder cards/silence become real b-roll + voiceover.
-3. YouTube Data API upload + scheduling.
-4. Web UI (Next.js) with a review/edit step between script and render.
-5. Brand kits (voice, niche, visual style presets) + content calendar.
-6. Billing + **credit metering** (Stripe) — every render has real API cost, so
+1. **MVP:** topic → script → storyboard → rendered MP4. ✅
+2. **Real vendors wired:** OpenAI (script + gpt-image-2 visuals) + ElevenLabs
+   (voice) → genuinely postable video. ✅
+3. **Cinematic render:** crop-to-fill 16:9, Ken Burns motion, fades, optional
+   music bed. ✅
+4. **Web UI:** type a topic, live progress, preview/download. ✅
+5. YouTube Data API upload + scheduling (the `publish` node stub).
+6. A review/edit step between script and render (approve before spending render $).
+7. Brand kits (voice, niche, visual style presets) + content calendar.
+8. Billing + **credit metering** (Stripe) — every render has real API cost, so
    meter it before adding features.
-7. Analytics loop: pull per-video performance back to tune hooks/titles.
+9. Analytics loop: pull per-video performance back to tune hooks/titles.
 
 ## Layout
 
@@ -93,8 +104,10 @@ src/
   providers/llm.ts     the swappable-LLM seam (initChatModel)
   schemas.ts           zod schema for the video brief (structured output)
   state.ts             LangGraph shared state
-  render/ffmpeg.ts     ffmpeg primitives (cards, silence, scene, concat)
+  render/ffmpeg.ts     ffmpeg primitives (Ken Burns scene, concat, music)
+  providers/image.ts   swappable image gen (OpenAI gpt-image-*, Replicate/Flux)
   nodes/               ideate · narrate · visualize · assemble · publish
   graph.ts             StateGraph wiring
   cli.ts               entrypoint
+  server.ts            web UI (SSE progress, preview/download)
 ```

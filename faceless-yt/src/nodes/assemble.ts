@@ -2,13 +2,15 @@
 // When ffmpeg and per-scene assets are present, this renders each scene (image
 // held for the narration duration, caption overlaid) and concatenates them.
 // Otherwise it falls back to writing a plan-only render.sh.
-import { writeFile, mkdir } from "node:fs/promises";
+import { writeFile, mkdir, rename } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { config } from "../config.js";
 import {
   ffmpegAvailable,
   renderScene,
   concatScenes,
+  mixMusic,
 } from "../render/ffmpeg.js";
 import type { RenderPlan, PipelineStateType } from "../state.js";
 
@@ -37,13 +39,26 @@ export async function assemble(state: PipelineStateType): Promise<Partial<Pipeli
         imagePath: visuals[i].imagePath!,
         audioPath: narration[i].audioPath!,
         onScreenText: brief.scenes[i].onScreenText,
+        index: i,
         outPath: scenePath,
       });
       scenePaths.push(scenePath);
     }
     await concatScenes(scenePaths, outputPath);
+
+    // Optional background music bed (ducked under narration).
+    let music = "none";
+    if (config.video.musicFile && existsSync(config.video.musicFile)) {
+      const tmp = join(assetsDir, "with-music.mp4");
+      await mixMusic(outputPath, config.video.musicFile, tmp);
+      await rename(tmp, outputPath);
+      music = "on";
+    }
+
     const secs = narration.reduce((s, n) => s + n.durationSec, 0);
-    console.log(`  ④ assemble → rendered video.mp4 (${brief.scenes.length} scenes, ~${secs.toFixed(1)}s)`);
+    console.log(
+      `  ④ assemble → rendered video.mp4 (${brief.scenes.length} scenes, ~${secs.toFixed(1)}s, Ken Burns + fades, music: ${music})`,
+    );
     return {
       renderPlan: { outputPath, ffmpegScriptPath, ffmpegAvailable: true },
     };
