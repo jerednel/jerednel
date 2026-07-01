@@ -8,6 +8,7 @@
   },
   "scripts": {
     "start": "tsx src/cli.ts",
+    "serve": "tsx src/server.ts",
     "demo": "tsx src/cli.ts \"3 Roman emperors who died in the most ridiculous ways\"",
     "typecheck": "tsc --noEmit"
   },
