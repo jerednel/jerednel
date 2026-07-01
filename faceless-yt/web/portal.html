@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My Videos — Faceless YT</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <nav>
+    <div class="logo"><a href="/" style="color:inherit">Faceless<span>YT</span></a></div>
+    <div class="links">
+      <a href="/">Home</a>
+      <a href="/app">My Videos</a>
+      <a class="btn" href="/create">+ New video</a>
+    </div>
+  </nav>
+
+  <main class="wrap">
+    <div class="page-head">
+      <h1>My Videos</h1>
+      <a class="btn" href="/create">+ New video</a>
+    </div>
+    <div id="list" class="projects"></div>
+    <div id="empty" class="empty hidden">
+      <p>No videos yet.</p>
+      <a class="btn" href="/create">Create your first video →</a>
+    </div>
+  </main>
+
+  <script>
+    const list = document.getElementById('list');
+    const empty = document.getElementById('empty');
+
+    function esc(s){ return (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+    function when(ts){ if(!ts) return ''; const d = Math.round((Date.now()-ts)/60000);
+      if(d<1) return 'just now'; if(d<60) return d+'m ago'; const h=Math.round(d/60);
+      if(h<24) return h+'h ago'; return Math.round(h/24)+'d ago'; }
+
+    async function load(){
+      const { projects } = await (await fetch('/api/projects')).json();
+      if(!projects.length){ empty.classList.remove('hidden'); return; }
+      empty.classList.add('hidden');
+      list.innerHTML = projects.map(p => {
+        const media = p.hasVideo
+          ? `<video src="/video/${encodeURIComponent(p.slug)}?t=${p.createdAt}" controls preload="metadata"></video>`
+          : `<div class="thumb">Draft — not rendered yet</div>`;
+        const actions = p.hasVideo
+          ? `<a class="btn ghost" href="/video/${encodeURIComponent(p.slug)}" download>Download</a>`
+          : `<a class="btn" href="/create?slug=${encodeURIComponent(p.slug)}">Render</a>`;
+        return `<div class="proj" data-slug="${esc(p.slug)}">
+          ${media}
+          <div class="body">
+            <h3>${esc(p.title)}</h3>
+            <div class="meta">
+              <span class="badge ${p.status}">${p.status}</span>
+              · ${p.scenes} scenes · ${when(p.createdAt)}
+            </div>
+            <div class="row">
+              ${actions}
+              <button class="btn danger" onclick="del('${esc(p.slug)}')">Delete</button>
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    async function del(slug){
+      if(!confirm('Delete this video and its assets?')) return;
+      await fetch('/api/project/'+encodeURIComponent(slug), { method:'DELETE' });
+      load();
+    }
+    window.del = del;
+    load();
+  </script>
+</body>
+</html>

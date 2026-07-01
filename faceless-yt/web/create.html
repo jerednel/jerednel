@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Create — Faceless YT</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <nav>
+    <div class="logo"><a href="/" style="color:inherit">Faceless<span>YT</span></a></div>
+    <div class="links">
+      <a href="/">Home</a>
+      <a href="/app">My Videos</a>
+    </div>
+  </nav>
+
+  <main class="wrap" style="max-width:820px">
+    <div class="steps">
+      <div class="s" id="st1">1 · Topic</div>
+      <div class="s" id="st2">2 · Review script</div>
+      <div class="s" id="st3">3 · Render</div>
+    </div>
+
+    <!-- Step 1 -->
+    <section id="step1" class="panel">
+      <div class="field">
+        <label>What should the video be about?</label>
+        <input id="topic" placeholder="e.g. 3 castles with dark histories" autocomplete="off">
+      </div>
+      <div class="center">
+        <button class="btn" id="genScript">Generate script →</button>
+      </div>
+      <p class="center" style="color:var(--muted);font-size:13px;margin-top:14px">
+        Generating a script is fast and cheap. You'll review it before any rendering runs.
+      </p>
+    </section>
+
+    <!-- Step 2 -->
+    <section id="step2" class="panel hidden">
+      <div class="field"><label>Title</label><input id="f-title"></div>
+      <div class="field"><label>Description</label><textarea id="f-desc" rows="2"></textarea></div>
+      <div class="field"><label>Tags (comma separated)</label><input id="f-tags"></div>
+      <div class="field"><label>Hook (first spoken line)</label><textarea id="f-hook" rows="2"></textarea></div>
+      <div id="scenes"></div>
+      <div class="row" style="display:flex;gap:10px;justify-content:space-between;margin-top:6px">
+        <button class="btn ghost" id="regen">↻ Regenerate</button>
+        <button class="btn" id="approve">Approve &amp; render video →</button>
+      </div>
+      <p class="center" style="color:var(--muted);font-size:13px;margin-top:14px">
+        Edit anything above. Rendering spends voice + image credits — this is the last review.
+      </p>
+    </section>
+
+    <!-- Step 3 -->
+    <section id="step3" class="panel hidden">
+      <h3 id="renderTitle" style="margin-top:0">Rendering…</h3>
+      <p style="color:var(--muted)">Voice, visuals, and edit — this takes a few minutes.</p>
+      <pre class="log" id="log"></pre>
+      <div id="result" class="hidden" style="margin-top:18px">
+        <video id="vid" controls style="width:100%;border-radius:12px;background:#000"></video>
+        <div class="row" style="display:flex;gap:10px;margin-top:14px">
+          <a class="btn" id="dl" download>⬇ Download MP4</a>
+          <a class="btn ghost" href="/app">Go to My Videos</a>
+          <a class="btn ghost" href="/create">Create another</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    let slug = null, brief = null;
+    const $ = id => document.getElementById(id);
+    const show = n => { for(const s of [1,2,3]) $('step'+s).classList.toggle('hidden', s!==n);
+      for(const s of [1,2,3]){ const el=$('st'+s); el.classList.toggle('active', s===n); el.classList.toggle('done', s<n); } };
+    const esc = s => (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+    function renderScenes(){
+      $('scenes').innerHTML = brief.scenes.map((sc,i)=>`
+        <div class="scene">
+          <h4>Scene ${i+1}</h4>
+          <div class="field"><label>Narration</label><textarea rows="2" data-i="${i}" data-k="narration">${esc(sc.narration)}</textarea></div>
+          <div class="field"><label>Visual (image prompt)</label><textarea rows="2" data-i="${i}" data-k="visual">${esc(sc.visual)}</textarea></div>
+          <div class="field"><label>On-screen caption</label><input data-i="${i}" data-k="onScreenText" value="${esc(sc.onScreenText)}"></div>
+        </div>`).join('');
+    }
+    function fillForm(){
+      $('f-title').value = brief.title; $('f-desc').value = brief.description;
+      $('f-tags').value = brief.tags.join(', '); $('f-hook').value = brief.hook;
+      renderScenes();
+    }
+    function collectForm(){
+      brief.title = $('f-title').value; brief.description = $('f-desc').value;
+      brief.tags = $('f-tags').value.split(',').map(t=>t.trim()).filter(Boolean);
+      brief.hook = $('f-hook').value;
+      document.querySelectorAll('#scenes [data-i]').forEach(el=>{
+        brief.scenes[+el.dataset.i][el.dataset.k] = el.value;
+      });
+    }
+
+    async function generate(topic){
+      show(1); $('genScript').disabled = true; $('genScript').textContent = 'Writing script…';
+      const r = await fetch('/api/script', { method:'POST', headers:{'content-type':'application/json'},
+        body: JSON.stringify({ topic }) });
+      const data = await r.json();
+      $('genScript').disabled = false; $('genScript').textContent = 'Generate script →';
+      if(data.error){ alert(data.error); return; }
+      slug = data.slug; brief = data.brief; fillForm(); show(2);
+    }
+
+    $('genScript').onclick = () => { const t=$('topic').value.trim(); if(t) generate(t); };
+    $('topic').addEventListener('keydown', e => { if(e.key==='Enter') $('genScript').click(); });
+    $('regen').onclick = () => generate($('topic').value.trim() || brief.title);
+
+    $('approve').onclick = async () => {
+      collectForm();
+      await fetch('/api/brief', { method:'POST', headers:{'content-type':'application/json'},
+        body: JSON.stringify({ slug, brief }) });
+      startRender();
+    };
+
+    function line(t){ const l=$('log'); l.textContent += t+'\n'; l.scrollTop=l.scrollHeight; }
+    function startRender(){
+      show(3); $('renderTitle').textContent = 'Rendering "'+brief.title+'"…';
+      $('log').textContent=''; $('result').classList.add('hidden');
+      line('▶ starting render — voice, visuals, and edit…');
+      const es = new EventSource('/api/render?slug='+encodeURIComponent(slug));
+      es.addEventListener('log', e => line(e.data));
+      es.addEventListener('done', e => {
+        const url = '/video/'+encodeURIComponent(slug)+'?t='+Date.now();
+        $('vid').src = url; $('dl').href = url;
+        $('renderTitle').textContent = '✔ Done';
+        $('result').classList.remove('hidden'); es.close();
+      });
+      es.addEventListener('fail', e => { line('✖ '+e.data); es.close(); });
+      es.onerror = () => es.close();
+    }
+
+    // Deep link: /create?slug=... renders an existing draft from the portal.
+    (async () => {
+      const q = new URLSearchParams(location.search).get('slug');
+      if(!q) return;
+      const r = await fetch('/api/project/'+encodeURIComponent(q));
+      if(!r.ok) return;
+      const state = await r.json();
+      if(state.brief){ slug = state.slug; brief = state.brief; fillForm(); show(2); }
+    })();
+  </script>
+</body>
+</html>

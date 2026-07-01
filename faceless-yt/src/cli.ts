@@ -1,22 +1,43 @@
-// Entrypoint: `tsx src/cli.ts "<topic>"`
-// Runs the full LangGraph pipeline and writes a project folder to out/<slug>/.
+// Entrypoint. Three modes:
+//   tsx src/cli.ts "<topic>"          full pipeline (script → render)
+//   tsx src/cli.ts script "<topic>"   script/brief only (cheap "propose" phase)
+//   tsx src/cli.ts render "<slug>"    render an approved project
+import { config } from "./config.js";
+import { buildGraph } from "./graph.js";
+import { runScript, runProduction, prepareProject } from "./pipeline.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { config, slugify } from "./config.js";
-import { buildGraph } from "./graph.js";
-import type { Brief } from "./schemas.js";
+import { renderScript } from "./pipeline.js";
 
 async function main() {
-  const topic = process.argv.slice(2).join(" ").trim();
-  if (!topic) {
-    console.error('Usage: tsx src/cli.ts "<video topic>"');
+  const [maybeCmd, ...rest] = process.argv.slice(2);
+  const cmd = maybeCmd === "script" || maybeCmd === "render" ? maybeCmd : null;
+  const arg = (cmd ? rest.join(" ") : [maybeCmd, ...rest].join(" ")).trim();
+
+  if (!arg) {
+    console.error('Usage: tsx src/cli.ts ["<topic>" | script "<topic>" | render "<slug>"]');
     process.exit(1);
   }
 
-  const slug = slugify(topic) || "video";
-  const projectDir = join(config.outDir, slug);
-  await mkdir(projectDir, { recursive: true });
+  if (cmd === "script") return void (await scriptMode(arg));
+  if (cmd === "render") return void (await renderMode(arg));
+  return void (await fullMode(arg));
+}
 
+async function scriptMode(topic: string) {
+  console.log(`\n▶ script: "${topic}"  (${config.llm.provider}/${config.llm.model})`);
+  const state = await runScript(topic);
+  console.log(`\n✔ script ready → out/${state.slug}/  (review, then render)`);
+}
+
+async function renderMode(slug: string) {
+  console.log(`\n▶ render: "${slug}"`);
+  const state = await runProduction(slug);
+  console.log(`\n✔ rendered → out/${state.slug}/video.mp4`);
+}
+
+async function fullMode(topic: string) {
+  const { slug, projectDir } = await prepareProject(topic);
   console.log(`\n▶ faceless-yt: "${topic}"`);
   console.log(`  provider: ${config.llm.provider} / ${config.llm.model}`);
   console.log(`  output:   out/${slug}/\n`);
@@ -24,37 +45,11 @@ async function main() {
   const graph = buildGraph();
   const final = await graph.invoke({ topic, slug, projectDir });
 
-  // Persist the full project for review/editing.
+  await mkdir(projectDir, { recursive: true });
   await writeFile(join(projectDir, "project.json"), JSON.stringify(final, null, 2));
   if (final.brief) await writeFile(join(projectDir, "script.md"), renderScript(final.brief));
 
   console.log(`\n✔ done → out/${slug}/`);
-  console.log(`  project.json  full structured project`);
-  console.log(`  script.md     human-readable script`);
-  console.log(`  render.sh     ffmpeg render plan\n`);
-}
-
-function renderScript(brief: Brief): string {
-  const lines = [
-    `# ${brief.title}`,
-    "",
-    `**Description:** ${brief.description}`,
-    "",
-    `**Tags:** ${brief.tags.join(", ")}`,
-    "",
-    `**Hook:** ${brief.hook}`,
-    "",
-    "## Scenes",
-    "",
-  ];
-  brief.scenes.forEach((s, i) => {
-    lines.push(`### Scene ${i + 1}`);
-    lines.push(`- **Narration:** ${s.narration}`);
-    lines.push(`- **Visual:** ${s.visual}`);
-    lines.push(`- **On-screen:** ${s.onScreenText}`);
-    lines.push("");
-  });
-  return lines.join("\n");
 }
 
 main().catch((err) => {
