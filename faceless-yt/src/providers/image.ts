@@ -6,6 +6,27 @@ import { config } from "../config.js";
 
 /** Generate one ~16:9 image for `prompt` and return the raw PNG bytes. */
 export async function generateImage(prompt: string): Promise<Buffer> {
+  // Retry before the caller degrades to a placeholder card. On retry, soften
+  // the prompt — output moderation throws false positives on history/violence
+  // topics, and a "tasteful, non-graphic" reframing usually clears it.
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await sleep(1200 * attempt);
+    const p =
+      attempt === 0
+        ? prompt
+        : `A tasteful, non-graphic, family-friendly illustration. ${prompt} ` +
+          `No gore, no nudity, no violence, safe for all audiences.`;
+    try {
+      return await generateOnce(p);
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
+async function generateOnce(prompt: string): Promise<Buffer> {
   const provider = config.image.provider;
   if (provider === "openai") return openaiImage(prompt);
   if (provider === "replicate") return replicateImage(prompt);
@@ -18,14 +39,15 @@ export async function generateImage(prompt: string): Promise<Buffer> {
 async function openaiImage(prompt: string): Promise<Buffer> {
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error("OPENAI_API_KEY not set");
-  const model = config.image.model.startsWith("gpt-image") ? config.image.model : "gpt-image-1";
+  const model = config.image.model.startsWith("gpt-image") ? config.image.model : "gpt-image-2";
 
   try {
     return await openaiGenerate(key, model, prompt, "1536x1024");
   } catch (err) {
-    // gpt-image-1 can require org verification; dall-e-3 is broadly available.
-    console.warn(`  ⚠ ${model} failed (${(err as Error).message}); trying dall-e-3.`);
-    return openaiGenerate(key, "dall-e-3", prompt, "1792x1024");
+    // Secondary model fallback (both gpt-image-1 and -2 exist on the account).
+    const alt = model === "gpt-image-1" ? "gpt-image-2" : "gpt-image-1";
+    console.warn(`  ⚠ ${model} failed (${(err as Error).message}); trying ${alt}.`);
+    return openaiGenerate(key, alt, prompt, "1536x1024");
   }
 }
 
