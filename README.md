@@ -43,7 +43,7 @@ its key is present, else fall back to mock.
 
 ## Quick start
 
-Web UI (type a topic, watch it build, preview/download):
+Web app — landing page, creation workflow, and asset portal:
 
 ```bash
 cd faceless-yt
@@ -51,12 +51,20 @@ npm install
 npm run serve                     # → http://localhost:3000
 ```
 
-Or the CLI:
+- `/` — marketing landing page
+- `/create` — the workflow: topic → **review/edit script** → render
+- `/app` — your portal: preview, download, delete every video
+
+The workflow gates the expensive step: generating the script is fast and cheap,
+and you approve (or edit) it before any voice/image credits are spent.
+
+Or drive it from the CLI:
 
 ```bash
-npm run demo                      # runs fully in mock mode, zero keys needed
-# or:
-npx tsx src/cli.ts "The history of the paperclip"
+npm run demo                             # full pipeline, mock mode, zero keys
+npx tsx src/cli.ts "The paperclip"       # full pipeline
+npx tsx src/cli.ts script "The paperclip"  # script only (cheap propose phase)
+npx tsx src/cli.ts render <slug>           # render an approved project
 ```
 
 With no keys set, every stage runs in **mock mode** — and if `ffmpeg` is
@@ -107,7 +115,13 @@ src/
   render/ffmpeg.ts     ffmpeg primitives (Ken Burns scene, concat, music)
   providers/image.ts   swappable image gen (OpenAI gpt-image-*, Replicate/Flux)
   nodes/               ideate · narrate · visualize · assemble · publish
-  graph.ts             StateGraph wiring
-  cli.ts               entrypoint
-  server.ts            web UI (SSE progress, preview/download)
+  graph.ts             full / script-only / production StateGraphs
+  pipeline.ts          project lifecycle (script, render, list, delete)
+  cli.ts               entrypoint (full | script | render modes)
+  server.ts            web app (landing, workflow, portal) + APIs
+web/
+  landing.html         marketing page
+  create.html          creation workflow (topic → review → render)
+  portal.html          asset library
+  style.css            shared styles
 ```
