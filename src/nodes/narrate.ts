@@ -17,10 +17,21 @@ export async function narrate(state: PipelineStateType): Promise<Partial<Pipelin
   const { brief, projectDir } = state;
   if (!brief) return {};
 
-  const useReal =
+  const wantReal =
     (config.tts.provider === "elevenlabs" || config.tts.provider === "auto") &&
-    !!config.tts.elevenLabsKey &&
-    !!config.tts.elevenLabsVoiceId;
+    !!config.tts.elevenLabsKey;
+
+  // Voice ID is optional: if unset, resolve the first voice on the account.
+  let voiceId = config.tts.elevenLabsVoiceId;
+  if (wantReal && !voiceId) {
+    try {
+      voiceId = await resolveDefaultVoice();
+      console.log(`  ② narrate: no ELEVENLABS_VOICE_ID set; using "${voiceId}"`);
+    } catch (err) {
+      console.warn(`  ⚠ narrate: could not resolve a voice (${(err as Error).message}); mock.`);
+    }
+  }
+  const useReal = wantReal && !!voiceId;
 
   const assetsDir = join(projectDir, "assets");
   await mkdir(assetsDir, { recursive: true });
@@ -34,7 +45,7 @@ export async function narrate(state: PipelineStateType): Promise<Partial<Pipelin
 
     if (useReal) {
       try {
-        const buf = await elevenLabsTTS(scene.narration);
+        const buf = await elevenLabsTTS(scene.narration, voiceId);
         await writeFile(audioPath, buf);
         narration.push({ sceneIndex: i, audioPath, durationSec, source: "elevenlabs" });
         continue;
@@ -59,9 +70,9 @@ export async function narrate(state: PipelineStateType): Promise<Partial<Pipelin
   return { narration };
 }
 
-async function elevenLabsTTS(text: string): Promise<Buffer> {
+async function elevenLabsTTS(text: string, voiceId: string): Promise<Buffer> {
   const res = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${config.tts.elevenLabsVoiceId}`,
+    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
     {
       method: "POST",
       headers: {
@@ -73,4 +84,16 @@ async function elevenLabsTTS(text: string): Promise<Buffer> {
   );
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return Buffer.from(await res.arrayBuffer());
+}
+
+/** Pick the first available voice on the account when none is configured. */
+async function resolveDefaultVoice(): Promise<string> {
+  const res = await fetch("https://api.elevenlabs.io/v1/voices", {
+    headers: { "xi-api-key": config.tts.elevenLabsKey },
+  });
+  if (!res.ok) throw new Error(`voices HTTP ${res.status}`);
+  const data = (await res.json()) as { voices?: Array<{ voice_id: string }> };
+  const id = data.voices?.[0]?.voice_id;
+  if (!id) throw new Error("account has no voices");
+  return id;
 }

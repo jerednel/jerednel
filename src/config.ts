@@ -25,7 +25,8 @@ export const config = {
 
   // ③ visualize — image / b-roll generation
   image: {
-    provider: process.env.IMAGE_PROVIDER || "auto", // "flux" | "mock" | "auto"
+    provider: process.env.IMAGE_PROVIDER || "auto", // "replicate" | "mock" | "auto"
+    model: process.env.IMAGE_MODEL || "black-forest-labs/flux-schnell",
     apiKey: process.env.IMAGE_API_KEY || "",
   },
 

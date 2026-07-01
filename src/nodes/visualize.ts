@@ -1,10 +1,12 @@
 // ③ VISUALIZE — each scene → an image/b-roll prompt + a generated asset.
-// Real image generation is stubbed behind a provider flag; mock mode renders a
-// text-card placeholder so the assemble stage has a real image to work with.
-import { mkdir } from "node:fs/promises";
+// Real path: Replicate (Flux) via the image provider. Mock path: a text-card
+// placeholder rendered with ffmpeg. Both write the same imagePath, so assemble
+// is agnostic to which one ran.
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "../config.js";
 import { ffmpegAvailable, renderTextCard } from "../render/ffmpeg.js";
+import { generateImage } from "../providers/image.js";
 import type { VisualAsset, PipelineStateType } from "../state.js";
 
 export async function visualize(state: PipelineStateType): Promise<Partial<PipelineStateType>> {
@@ -12,36 +14,46 @@ export async function visualize(state: PipelineStateType): Promise<Partial<Pipel
   if (!brief) return {};
 
   const useReal =
-    (config.image.provider === "flux" || config.image.provider === "auto") && !!config.image.apiKey;
+    config.image.provider === "openai"
+      ? !!process.env.OPENAI_API_KEY
+      : (config.image.provider === "replicate" || config.image.provider === "auto") &&
+        !!config.image.apiKey;
 
   const assetsDir = join(projectDir, "assets");
   await mkdir(assetsDir, { recursive: true });
   const canRender = await ffmpegAvailable();
 
   const visuals: VisualAsset[] = [];
+  let real = 0;
+  let cards = 0;
   for (let i = 0; i < brief.scenes.length; i++) {
     const scene = brief.scenes[i];
     const prompt = `${scene.visual}. Cinematic, high detail, 16:9, no text, no watermark.`;
     const imagePath = join(assetsDir, `scene-${i}.png`);
 
     if (useReal) {
-      // TODO: call the image provider (Flux via Replicate/fal), write imagePath,
-      // set source: "flux". Left as a stub so dry runs stay free.
-      visuals.push({ sceneIndex: i, prompt, imagePath: null, source: "flux-stub" });
-      continue;
+      try {
+        const png = await generateImage(prompt);
+        await writeFile(imagePath, png);
+        visuals.push({ sceneIndex: i, prompt, imagePath, source: config.image.provider });
+        real++;
+        continue;
+      } catch (err) {
+        console.warn(`  ⚠ visualize scene ${i}: image gen failed (${(err as Error).message}); card.`);
+      }
     }
 
-    // Mock: render a placeholder card so assemble produces a real MP4. Swapping
-    // in a generated image later changes nothing downstream.
+    // Fallback: placeholder card so assemble still produces a real MP4.
     if (canRender) {
       await renderTextCard(scene.visual, imagePath);
       visuals.push({ sceneIndex: i, prompt, imagePath, source: "mock" });
+      cards++;
     } else {
       visuals.push({ sceneIndex: i, prompt, imagePath: null, source: "mock" });
     }
   }
 
-  const rendered = visuals.filter((v) => v.imagePath).length;
-  console.log(`  ③ visualize → ${visuals.length} prompts, ${rendered} placeholder cards`);
+  const label = config.image.provider === "openai" ? config.image.model : config.image.provider;
+  console.log(`  ③ visualize → ${visuals.length} scenes (${real} ${label}, ${cards} cards)`);
   return { visuals };
 }
