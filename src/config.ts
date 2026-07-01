@@ -29,6 +29,15 @@ export const config = {
     apiKey: process.env.IMAGE_API_KEY || "",
   },
 
+  // ④ assemble — video render settings
+  video: {
+    width: Number(process.env.VIDEO_WIDTH) || 1920,
+    height: Number(process.env.VIDEO_HEIGHT) || 1080,
+    fps: Number(process.env.VIDEO_FPS) || 30,
+    fontFile:
+      process.env.FONT_FILE || "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+  },
+
   // ⑤ publish — YouTube
   youtube: {
     provider: process.env.PUBLISH_PROVIDER || "auto", // "youtube" | "mock" | "auto"

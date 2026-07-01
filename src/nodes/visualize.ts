@@ -1,9 +1,10 @@
-// ③ VISUALIZE — each scene → an image/b-roll prompt + (real) generated asset.
-// Real image generation is stubbed behind a provider flag; mock mode just emits
-// the prompt so the render plan has something to reference.
+// ③ VISUALIZE — each scene → an image/b-roll prompt + a generated asset.
+// Real image generation is stubbed behind a provider flag; mock mode renders a
+// text-card placeholder so the assemble stage has a real image to work with.
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "../config.js";
+import { ffmpegAvailable, renderTextCard } from "../render/ffmpeg.js";
 import type { VisualAsset, PipelineStateType } from "../state.js";
 
 export async function visualize(state: PipelineStateType): Promise<Partial<PipelineStateType>> {
@@ -15,24 +16,32 @@ export async function visualize(state: PipelineStateType): Promise<Partial<Pipel
 
   const assetsDir = join(projectDir, "assets");
   await mkdir(assetsDir, { recursive: true });
+  const canRender = await ffmpegAvailable();
 
-  const visuals: VisualAsset[] = brief.scenes.map((scene, i) => {
+  const visuals: VisualAsset[] = [];
+  for (let i = 0; i < brief.scenes.length; i++) {
+    const scene = brief.scenes[i];
     const prompt = `${scene.visual}. Cinematic, high detail, 16:9, no text, no watermark.`;
-    return {
-      sceneIndex: i,
-      prompt,
-      imagePath: null,
-      source: "mock",
-    };
-  });
+    const imagePath = join(assetsDir, `scene-${i}.png`);
 
-  if (useReal) {
-    // TODO: call the image provider (e.g. Flux via Replicate/fal) here and set
-    // imagePath + source. Left as a stub so the pipeline stays runnable dry.
-    console.log(`  ③ visualize → ${visuals.length} prompts (image provider stub: wire Flux here)`);
-  } else {
-    console.log(`  ③ visualize → ${visuals.length} prompts (mock)`);
+    if (useReal) {
+      // TODO: call the image provider (Flux via Replicate/fal), write imagePath,
+      // set source: "flux". Left as a stub so dry runs stay free.
+      visuals.push({ sceneIndex: i, prompt, imagePath: null, source: "flux-stub" });
+      continue;
+    }
+
+    // Mock: render a placeholder card so assemble produces a real MP4. Swapping
+    // in a generated image later changes nothing downstream.
+    if (canRender) {
+      await renderTextCard(scene.visual, imagePath);
+      visuals.push({ sceneIndex: i, prompt, imagePath, source: "mock" });
+    } else {
+      visuals.push({ sceneIndex: i, prompt, imagePath: null, source: "mock" });
+    }
   }
 
+  const rendered = visuals.filter((v) => v.imagePath).length;
+  console.log(`  ③ visualize → ${visuals.length} prompts, ${rendered} placeholder cards`);
   return { visuals };
 }
