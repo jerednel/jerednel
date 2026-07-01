@@ -3,6 +3,7 @@
 import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "../config.js";
+import { ffmpegAvailable, renderSilentAudio } from "../render/ffmpeg.js";
 import type { NarrationAsset, PipelineStateType } from "../state.js";
 
 const WORDS_PER_SECOND = 2.6; // ~155 wpm narration pace
@@ -23,32 +24,33 @@ export async function narrate(state: PipelineStateType): Promise<Partial<Pipelin
 
   const assetsDir = join(projectDir, "assets");
   await mkdir(assetsDir, { recursive: true });
+  const canRender = await ffmpegAvailable();
 
   const narration: NarrationAsset[] = [];
   for (let i = 0; i < brief.scenes.length; i++) {
     const scene = brief.scenes[i];
+    const durationSec = estimateDuration(scene.narration);
+    const audioPath = join(assetsDir, `narration-${i}.mp3`);
+
     if (useReal) {
       try {
-        const audioPath = join(assetsDir, `narration-${i}.mp3`);
         const buf = await elevenLabsTTS(scene.narration);
         await writeFile(audioPath, buf);
-        narration.push({
-          sceneIndex: i,
-          audioPath,
-          durationSec: estimateDuration(scene.narration),
-          source: "elevenlabs",
-        });
+        narration.push({ sceneIndex: i, audioPath, durationSec, source: "elevenlabs" });
         continue;
       } catch (err) {
         console.warn(`  ⚠ narrate scene ${i}: TTS failed (${(err as Error).message}); mock.`);
       }
     }
-    narration.push({
-      sceneIndex: i,
-      audioPath: null,
-      durationSec: estimateDuration(scene.narration),
-      source: "mock",
-    });
+
+    // Mock: emit a real silent clip at the estimated duration so the render
+    // path is identical to the real one (swap in TTS audio, nothing else changes).
+    if (canRender) {
+      await renderSilentAudio(durationSec, audioPath);
+      narration.push({ sceneIndex: i, audioPath, durationSec, source: "mock" });
+    } else {
+      narration.push({ sceneIndex: i, audioPath: null, durationSec, source: "mock" });
+    }
   }
 
   const total = narration.reduce((s, n) => s + n.durationSec, 0);

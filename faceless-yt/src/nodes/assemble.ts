@@ -1,22 +1,16 @@
-// ④ ASSEMBLE — turn scenes + narration + visuals into a render plan and emit a
-// runnable ffmpeg script. Detects whether ffmpeg is installed; either way the
-// script is written so it can be run wherever ffmpeg is available.
+// ④ ASSEMBLE — scenes + narration + visuals → a final video.mp4.
+// When ffmpeg and per-scene assets are present, this renders each scene (image
+// held for the narration duration, caption overlaid) and concatenates them.
+// Otherwise it falls back to writing a plan-only render.sh.
 import { writeFile, mkdir } from "node:fs/promises";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
+import {
+  ffmpegAvailable,
+  renderScene,
+  concatScenes,
+} from "../render/ffmpeg.js";
 import type { RenderPlan, PipelineStateType } from "../state.js";
-
-const exec = promisify(execFile);
-
-async function hasFfmpeg(): Promise<boolean> {
-  try {
-    await exec("ffmpeg", ["-version"]);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 export async function assemble(state: PipelineStateType): Promise<Partial<PipelineStateType>> {
   const { brief, narration, visuals, projectDir } = state;
@@ -26,11 +20,50 @@ export async function assemble(state: PipelineStateType): Promise<Partial<Pipeli
   await mkdir(assetsDir, { recursive: true });
   const outputPath = join(projectDir, "video.mp4");
   const ffmpegScriptPath = join(projectDir, "render.sh");
-  const ffmpegAvailable = await hasFfmpeg();
+  const ffmpegOk = await ffmpegAvailable();
 
-  // Build a per-scene concat plan. Each scene = one image shown for the
-  // narration duration, with its audio track. Missing assets are annotated so
-  // the operator knows what to drop in before running.
+  // A scene is renderable only if both its image and audio exist on disk.
+  const renderable = brief.scenes.every((_, i) => {
+    const img = visuals[i]?.imagePath;
+    const aud = narration[i]?.audioPath;
+    return !!img && existsSync(img) && !!aud && existsSync(aud);
+  });
+
+  if (ffmpegOk && renderable) {
+    const scenePaths: string[] = [];
+    for (let i = 0; i < brief.scenes.length; i++) {
+      const scenePath = join(assetsDir, `scene-clip-${i}.mp4`);
+      await renderScene({
+        imagePath: visuals[i].imagePath!,
+        audioPath: narration[i].audioPath!,
+        onScreenText: brief.scenes[i].onScreenText,
+        outPath: scenePath,
+      });
+      scenePaths.push(scenePath);
+    }
+    await concatScenes(scenePaths, outputPath);
+    const secs = narration.reduce((s, n) => s + n.durationSec, 0);
+    console.log(`  ④ assemble → rendered video.mp4 (${brief.scenes.length} scenes, ~${secs.toFixed(1)}s)`);
+    return {
+      renderPlan: { outputPath, ffmpegScriptPath, ffmpegAvailable: true },
+    };
+  }
+
+  // Fallback: write an annotated plan the operator can run once assets exist.
+  await writePlan(ffmpegScriptPath, brief, narration, visuals);
+  const why = !ffmpegOk ? "ffmpeg not installed" : "some scene assets missing";
+  console.log(`  ④ assemble → render.sh plan only (${why})`);
+  return {
+    renderPlan: { outputPath, ffmpegScriptPath, ffmpegAvailable: ffmpegOk },
+  };
+}
+
+async function writePlan(
+  path: string,
+  brief: NonNullable<PipelineStateType["brief"]>,
+  narration: PipelineStateType["narration"],
+  visuals: PipelineStateType["visuals"],
+): Promise<void> {
   const lines: string[] = [
     "#!/usr/bin/env bash",
     "# Auto-generated render plan. Fill in any missing assets, then run.",
@@ -38,11 +71,10 @@ export async function assemble(state: PipelineStateType): Promise<Partial<Pipeli
     `cd "$(dirname "$0")"`,
     "",
   ];
-
   brief.scenes.forEach((scene, i) => {
     const n = narration[i];
     const v = visuals[i];
-    const img = v?.imagePath ? `assets/scene-${i}.png` : `# MISSING image for scene ${i}: ${v?.prompt}`;
+    const img = v?.imagePath ? `assets/scene-${i}.png` : `# MISSING image: ${v?.prompt}`;
     const audio = n?.audioPath ? `assets/narration-${i}.mp3` : `# MISSING audio for scene ${i}`;
     lines.push(`# --- scene ${i} (${n?.durationSec ?? 5}s) ---`);
     lines.push(`# on-screen text: ${scene.onScreenText}`);
@@ -50,21 +82,5 @@ export async function assemble(state: PipelineStateType): Promise<Partial<Pipeli
     lines.push(`# audio:  ${audio}`);
     lines.push("");
   });
-
-  lines.push(
-    "# Once assets exist, concat per-scene clips into video.mp4 with ffmpeg,",
-    "# e.g. build each scene with:",
-    "#   ffmpeg -loop 1 -i assets/scene-$I.png -i assets/narration-$I.mp3 \\",
-    "#     -c:v libx264 -tune stillimage -c:a aac -shortest -pix_fmt yuv420p scene-$I.mp4",
-    "# then concat all scene-*.mp4 into video.mp4.",
-    "",
-  );
-
-  await writeFile(ffmpegScriptPath, lines.join("\n"), { mode: 0o755 });
-
-  const renderPlan: RenderPlan = { outputPath, ffmpegScriptPath, ffmpegAvailable };
-  console.log(
-    `  ④ assemble → render.sh written (ffmpeg ${ffmpegAvailable ? "detected" : "NOT installed — plan only"})`,
-  );
-  return { renderPlan };
+  await writeFile(path, lines.join("\n"), { mode: 0o755 });
 }
