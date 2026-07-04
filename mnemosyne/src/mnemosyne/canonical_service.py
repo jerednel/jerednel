@@ -49,8 +49,7 @@ def keys_from_env() -> dict[str, str]:
         key_id, _, secret = pair.partition(":")
         if not key_id or not secret:
             raise ValueError(
-                "MNEMOSYNE_API_KEYS entries must be key_id:secret pairs, "
-                f"got {pair!r}"
+                f"MNEMOSYNE_API_KEYS entries must be key_id:secret pairs, got {pair!r}"
             )
         keys[key_id] = secret
     return keys
@@ -98,9 +97,7 @@ def create_app(store: CanonicalStore, keys: dict[str, str]) -> Starlette:
         seeded_at = None
         conn = getattr(store, "conn", None)
         if conn is not None:
-            row = conn.execute(
-                "SELECT value FROM schema_meta WHERE key = 'seeded_at'"
-            ).fetchone()
+            row = conn.execute("SELECT value FROM schema_meta WHERE key = 'seeded_at'").fetchone()
             seeded_at = row[0] if row else None
         return JSONResponse({"status": "ok", "seeded_at": seeded_at})
 
@@ -169,9 +166,7 @@ def create_app(store: CanonicalStore, keys: dict[str, str]) -> Starlette:
 
 
 def app_from_env(db_path: Path | None = None) -> Starlette:
-    path = db_path or Path(
-        os.environ.get("MNEMOSYNE_CANONICAL_DB") or canonical_db_path()
-    )
+    path = db_path or Path(os.environ.get("MNEMOSYNE_CANONICAL_DB") or canonical_db_path())
     if not path.exists():
         from mnemosyne.seed.loader import build_canonical_db
 

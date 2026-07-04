@@ -24,17 +24,13 @@ def test_missing_auth_rejected(service_client):
 
 
 def test_wrong_secret_rejected(service_client):
-    response = service_client.get(
-        "/v1/entities", headers={"Authorization": "Bearer wrong-secret"}
-    )
+    response = service_client.get("/v1/entities", headers={"Authorization": "Bearer wrong-secret"})
     assert response.status_code == 401
 
 
 def test_valid_keys_identified_per_tenant(service_client):
     for key_id, secret in API_KEYS.items():
-        response = service_client.get(
-            "/v1/entities", headers={"Authorization": f"Bearer {secret}"}
-        )
+        response = service_client.get("/v1/entities", headers={"Authorization": f"Bearer {secret}"})
         assert response.status_code == 200
         assert response.headers["X-Mnemosyne-Key-Id"] == key_id
 
@@ -77,12 +73,10 @@ def test_endpoint_parity_with_direct_store(service_client, canonical_store):
 
     all_entities = service_client.get("/v1/entities", headers=AUTH).json()["items"]
     assert len(all_entities) == len(canonical_store.all_entities())
-    companies = service_client.get(
-        "/v1/entities", params={"type": "company"}, headers=AUTH
-    ).json()["items"]
-    assert {e["id"] for e in companies} == {
-        e.id for e in canonical_store.all_entities("company")
-    }
+    companies = service_client.get("/v1/entities", params={"type": "company"}, headers=AUTH).json()[
+        "items"
+    ]
+    assert {e["id"] for e in companies} == {e.id for e in canonical_store.all_entities("company")}
 
     aliases = service_client.get(
         "/v1/aliases/by-name", params={"name": "dbx"}, headers=AUTH
@@ -97,12 +91,10 @@ def test_endpoint_parity_with_direct_store(service_client, canonical_store):
     all_aliases = service_client.get("/v1/aliases", headers=AUTH).json()["items"]
     assert len(all_aliases) == len(canonical_store.all_aliases())
 
-    rels = service_client.get(
-        "/v1/relationships", params={"entity_id": dbx}, headers=AUTH
-    ).json()["items"]
-    assert rels == [
-        r.model_dump(mode="json") for r in canonical_store.relationships_for(dbx)
+    rels = service_client.get("/v1/relationships", params={"entity_id": dbx}, headers=AUTH).json()[
+        "items"
     ]
+    assert rels == [r.model_dump(mode="json") for r in canonical_store.relationships_for(dbx)]
 
     prov_id = canonical_store.get_entity(dbx).provenance_id
     provenance = service_client.get(
@@ -113,9 +105,7 @@ def test_endpoint_parity_with_direct_store(service_client, canonical_store):
     assertions = service_client.get(
         "/v1/assertions", params={"subject_id": dbx}, headers=AUTH
     ).json()["items"]
-    assert assertions == [
-        a.model_dump(mode="json") for a in canonical_store.assertions_for(dbx)
-    ]
+    assert assertions == [a.model_dump(mode="json") for a in canonical_store.assertions_for(dbx)]
 
 
 def test_unknown_id_404(service_client):

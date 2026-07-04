@@ -11,11 +11,11 @@ from typing import Any, Literal
 
 from mcp.server.fastmcp import Context, FastMCP
 
-from mnemosyne.config import canonical_db_path, fallback_assistant_id, overlay_db_path
+from mnemosyne.config import fallback_assistant_id, overlay_db_path
 from mnemosyne.fabric import MemoryFabric
 from mnemosyne.models import Provenance
 from mnemosyne.ontology import OntologyRegistry
-from mnemosyne.storage.sqlite_canonical import SqliteCanonicalStore
+from mnemosyne.storage import canonical_store_from_env
 from mnemosyne.storage.sqlite_overlay import SqliteOverlayStore
 
 mcp = FastMCP("mnemosyne")
@@ -27,13 +27,8 @@ _session_ids: dict[int, str] = {}
 def get_fabric() -> MemoryFabric:
     global _fabric
     if _fabric is None:
-        canonical_path = canonical_db_path()
-        if not canonical_path.exists():
-            from mnemosyne.seed.loader import build_canonical_db
-
-            build_canonical_db(canonical_path)
         _fabric = MemoryFabric(
-            canonical=SqliteCanonicalStore(canonical_path),
+            canonical=canonical_store_from_env(),
             overlay=SqliteOverlayStore(overlay_db_path()),
             ontology=OntologyRegistry.load(),
         )
