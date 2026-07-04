@@ -118,8 +118,9 @@ def recall(
     filters to facts valid at that instant; superseded memories are flagged."""
     fabric = get_fabric()
     provenance = provenance_from_context(ctx)
-    return _dump(fabric.recall(query, provenance, entity=entity, kind=kind,
-                               as_of=as_of, limit=limit))
+    return _dump(
+        fabric.recall(query, provenance, entity=entity, kind=kind, as_of=as_of, limit=limit)
+    )
 
 
 @mcp.tool()

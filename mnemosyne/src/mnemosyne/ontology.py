@@ -60,8 +60,7 @@ class OntologyRegistry:
     def validate_entity_type(self, entity_type: str) -> None:
         if entity_type not in self.entity_types:
             raise OntologyError(
-                f"Unknown entity type {entity_type!r}. "
-                f"Valid types: {sorted(self.entity_types)}"
+                f"Unknown entity type {entity_type!r}. Valid types: {sorted(self.entity_types)}"
             )
 
     def is_subtype(self, candidate: str, ancestor: str) -> bool:

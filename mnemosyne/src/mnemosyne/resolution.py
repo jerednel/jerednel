@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from rapidfuzz import fuzz
 
 from mnemosyne.models import Alias, Entity
+from mnemosyne.ontology import OntologyRegistry
 from mnemosyne.storage.base import CanonicalStore, OverlayStore
 
 AUTO_ACCEPT_SCORE = 92.0
@@ -58,9 +59,24 @@ class MatchOutcome:
 
 
 class IdentityResolver:
-    def __init__(self, canonical: CanonicalStore, overlay: OverlayStore):
+    def __init__(
+        self,
+        canonical: CanonicalStore,
+        overlay: OverlayStore,
+        ontology: OntologyRegistry | None = None,
+    ):
         self.canonical = canonical
         self.overlay = overlay
+        self.ontology = ontology
+
+    def _type_ok(self, entity: Entity, wanted: str | None) -> bool:
+        """Subtype-aware type filter: a `company` satisfies an `organization`
+        constraint. Falls back to equality when no ontology is wired."""
+        if wanted is None:
+            return True
+        if self.ontology is not None:
+            return self.ontology.is_subtype(entity.entity_type, wanted)
+        return entity.entity_type == wanted
 
     def _stores(self) -> list[CanonicalStore]:
         return [self.overlay, self.canonical]  # overlay shadows canonical
@@ -82,8 +98,7 @@ class IdentityResolver:
         # 1. exact match on normalized name
         for store in self._stores():
             entities = [
-                e for e in store.find_by_normalized_name(norm)
-                if entity_type is None or e.entity_type == entity_type
+                e for e in store.find_by_normalized_name(norm) if self._type_ok(e, entity_type)
             ]
             if entities:
                 return MatchOutcome(
@@ -97,7 +112,7 @@ class IdentityResolver:
                 entity = self.get_entity_any(alias.entity_id)
                 if entity is None or entity.superseded_by is not None:
                     continue
-                if entity_type is not None and entity.entity_type != entity_type:
+                if not self._type_ok(entity, entity_type):
                     continue
                 return MatchOutcome(
                     status="matched",
@@ -133,8 +148,9 @@ class IdentityResolver:
         Phase 2 hook: blocking/pre-filter or embedding matcher slots in here."""
         entities: dict[str, Entity] = {}
         for store in reversed(self._stores()):  # canonical first so overlay wins on clashes
-            for entity in store.all_entities(entity_type):
-                entities[entity.id] = entity
+            for entity in store.all_entities():
+                if self._type_ok(entity, entity_type):
+                    entities[entity.id] = entity
 
         texts: list[tuple[str, str, bool]] = [
             (e.normalized_name, e.id, False) for e in entities.values()

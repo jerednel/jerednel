@@ -29,9 +29,7 @@ def build_canonical_db(
     """Build canonical.db from seed JSON. Returns number of entities loaded."""
     if db_path.exists():
         if not force:
-            raise FileExistsError(
-                f"{db_path} already exists. Pass --force to rebuild it."
-            )
+            raise FileExistsError(f"{db_path} already exists. Pass --force to rebuild it.")
         db_path.unlink()
         for suffix in ("-wal", "-shm"):
             sidecar = db_path.with_name(db_path.name + suffix)

@@ -12,6 +12,9 @@ from pathlib import Path
 from typing import Any
 
 from mnemosyne.models import (
+    Alias as AliasModel,
+)
+from mnemosyne.models import (
     Assertion,
     Entity,
     Memory,
@@ -19,9 +22,6 @@ from mnemosyne.models import (
     Provenance,
     Relationship,
     utcnow,
-)
-from mnemosyne.models import (
-    Alias as AliasModel,
 )
 from mnemosyne.storage.schema import init_schema
 from mnemosyne.storage.sqlite_common import (
@@ -167,8 +167,12 @@ class SqliteOverlayStore(SqliteReadStore):
                 "alias_added",
                 "alias",
                 alias.id,
-                {"entity_id": alias.entity_id, "alias": alias.alias,
-                 "alias_type": alias.alias_type, "confidence": alias.confidence},
+                {
+                    "entity_id": alias.entity_id,
+                    "alias": alias.alias,
+                    "alias_type": alias.alias_type,
+                    "confidence": alias.confidence,
+                },
                 provenance.id,
             )
         return alias
@@ -194,7 +198,9 @@ class SqliteOverlayStore(SqliteReadStore):
             ),
         )
 
-    def assert_relationship(self, relationship: Relationship, provenance: Provenance) -> Relationship:
+    def assert_relationship(
+        self, relationship: Relationship, provenance: Provenance
+    ) -> Relationship:
         with self.conn:
             self.save_provenance(provenance)
             self._insert_relationship(relationship, provenance.id)
@@ -230,8 +236,7 @@ class SqliteOverlayStore(SqliteReadStore):
                 "relationship_superseded",
                 "relationship",
                 old_id,
-                {"superseded_by": new_relationship.id,
-                 "valid_to": new_relationship.valid_from},
+                {"superseded_by": new_relationship.id, "valid_to": new_relationship.valid_from},
                 provenance.id,
             )
         return new_relationship
@@ -407,9 +412,7 @@ class SqliteOverlayStore(SqliteReadStore):
                 "SELECT * FROM merge_proposals WHERE status = ? ORDER BY created_at", (status,)
             ).fetchall()
         else:
-            rows = self.conn.execute(
-                "SELECT * FROM merge_proposals ORDER BY created_at"
-            ).fetchall()
+            rows = self.conn.execute("SELECT * FROM merge_proposals ORDER BY created_at").fetchall()
         return [row_to_proposal(r) for r in rows]
 
     def get_proposal(self, proposal_id: str) -> MergeProposal | None:

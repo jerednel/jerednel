@@ -46,7 +46,7 @@ class MemoryFabric:
         self.canonical = canonical
         self.overlay = overlay
         self.ontology = ontology or OntologyRegistry.load()
-        self.resolver = IdentityResolver(canonical, overlay)
+        self.resolver = IdentityResolver(canonical, overlay, self.ontology)
 
     # ------------------------------------------------------------------
     # entity views
