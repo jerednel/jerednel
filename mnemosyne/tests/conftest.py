@@ -1,5 +1,7 @@
 import pytest
+from starlette.testclient import TestClient
 
+from mnemosyne.canonical_service import create_app
 from mnemosyne.fabric import MemoryFabric
 from mnemosyne.models import Provenance
 from mnemosyne.ontology import OntologyRegistry
@@ -37,3 +39,21 @@ def fabric(canonical_store, overlay_store):
 @pytest.fixture()
 def provenance():
     return Provenance(source_type="assistant", assistant_id="pytest/1.0", stated_confidence=0.9)
+
+
+API_KEYS = {"test-key-id": "test-secret", "second-tenant": "other-secret"}
+
+
+@pytest.fixture()
+def canonical_app(canonical_db):
+    # TestClient dispatches handlers on a worker thread, so the served store
+    # needs its own cross-thread connection.
+    store = SqliteCanonicalStore(canonical_db, check_same_thread=False)
+    yield create_app(store, dict(API_KEYS))
+    store.close()
+
+
+@pytest.fixture()
+def service_client(canonical_app):
+    with TestClient(canonical_app) as client:
+        yield client
