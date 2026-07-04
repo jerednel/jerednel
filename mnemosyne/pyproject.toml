@@ -22,6 +22,8 @@ embeddings-local = ["fastembed>=0.3"]
 mnemosyne-server = "mnemosyne.mcp_server:main"
 mnemosyne-seed = "mnemosyne.seed.loader:main"
 mnemosyne-canonical = "mnemosyne.canonical_service:main"
+mnemosyne-import = "mnemosyne.seed.wikidata:main"
+mnemosyne-coverage = "mnemosyne.seed.coverage:main"
 
 [dependency-groups]
 dev = [

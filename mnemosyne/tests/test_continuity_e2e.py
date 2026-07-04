@@ -31,7 +31,7 @@ async def assistant_session(data_dir, name: str, version: str):
     params = StdioServerParameters(
         command=sys.executable,
         args=["-m", "mnemosyne.mcp_server"],
-        env={"MNEMOSYNE_DATA_DIR": str(data_dir)},
+        env={"MNEMOSYNE_DATA_DIR": str(data_dir), "MNEMOSYNE_SEED_BASE_ONLY": "1"},
     )
     async with (
         stdio_client(params) as (read, write),

@@ -25,7 +25,11 @@ async def test_full_scenario(tmp_path):
     params = StdioServerParameters(
         command=sys.executable,
         args=["-m", "mnemosyne.mcp_server"],
-        env={"MNEMOSYNE_DATA_DIR": str(tmp_path), "MNEMOSYNE_ASSISTANT_ID": "e2e-fallback"},
+        env={
+            "MNEMOSYNE_DATA_DIR": str(tmp_path),
+            "MNEMOSYNE_ASSISTANT_ID": "e2e-fallback",
+            "MNEMOSYNE_SEED_BASE_ONLY": "1",
+        },
     )
     async with (
         stdio_client(params) as (read, write),

@@ -96,7 +96,7 @@ Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 cd mnemosyne
 uv sync
 uv run python examples/demo.py   # the whole story in 30 seconds
-uv run pytest -q                 # 68 tests: stdio MCP e2e, hosted-tier HTTP, interop
+uv run pytest -q                 # 74 tests: stdio MCP e2e, hosted-tier HTTP, interop
 ```
 
 Wire it into Claude Code:
@@ -131,6 +131,16 @@ MNEMOSYNE_API_KEYS="you:mk_change_me" uv run mnemosyne-canonical   # port 8321
 | `get_entity_timeline` | Full append-only history of an entity, with provenance |
 | `list_ontology` | Entity types + relationship taxonomy (assistants self-discover) |
 | `review_proposals` | List/accept/reject pending identity-merge proposals |
+
+## Ontology coverage
+
+The canonical tier ships with **~4,800 entities and ~5,600 aliases** imported from
+scoped Wikidata slices (CC0): software/technology companies, programming languages,
+notable software, libraries, frameworks, operating systems, databases, and major
+platforms — every imported fact traces to its Wikidata QID. "MSFT" → Microsoft,
+"K8s" → Kubernetes, and the typo "sqllite" → SQLite all resolve out of the box.
+Rebuild or extend with `mnemosyne-import`; the full breakdown is auto-generated in
+[docs/ontology-coverage.md](docs/ontology-coverage.md).
 
 ## Data model
 

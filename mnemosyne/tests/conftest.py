@@ -12,8 +12,10 @@ from mnemosyne.storage.sqlite_overlay import SqliteOverlayStore
 
 @pytest.fixture(scope="session")
 def canonical_db(tmp_path_factory):
+    # Base seed only: unit tests need a small, deterministic canonical tier
+    # regardless of which extended imports (seed/data/) are present locally.
     path = tmp_path_factory.mktemp("canonical") / "canonical.db"
-    build_canonical_db(path)
+    build_canonical_db(path, extended_dir=None)
     return path
 
 

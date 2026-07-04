@@ -163,6 +163,19 @@ class IdentityResolver:
             if a.entity_id in entities  # skips type-filtered and superseded entities
         )
 
+        # Length guard: WRatio's partial-match component scores tiny candidates
+        # ("S", "FL") near 90 against anything containing them, flooding the
+        # propose band with junk. Extreme length mismatches aren't fuzzy
+        # variants — abbreviations belong to the alias table, not the matcher.
+        mention_len = len(norm)
+        texts = [
+            (text, entity_id, via_alias)
+            for text, entity_id, via_alias in texts
+            if len(text) >= 3 and min(len(text), mention_len) / max(len(text), mention_len) >= 0.4
+        ]
+        if not texts:
+            return []
+
         scores = self.matcher.score(norm, [text for text, _, _ in texts])
         best_by_entity: dict[str, Candidate] = {}
         for (text, entity_id, via_alias), score in zip(texts, scores, strict=True):

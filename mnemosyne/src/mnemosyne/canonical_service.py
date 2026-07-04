@@ -98,11 +98,14 @@ def create_app(
 
     def health(request: Request) -> JSONResponse:
         seeded_at = None
+        counts = {}
         conn = getattr(store, "conn", None)
         if conn is not None:
             row = conn.execute("SELECT value FROM schema_meta WHERE key = 'seeded_at'").fetchone()
             seeded_at = row[0] if row else None
-        return JSONResponse({"status": "ok", "seeded_at": seeded_at})
+            for table in ("entities", "aliases", "relationships"):
+                counts[table] = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]  # noqa: S608
+        return JSONResponse({"status": "ok", "seeded_at": seeded_at, **counts})
 
     def get_entity(request: Request) -> JSONResponse:
         key_id = require_key(request)
