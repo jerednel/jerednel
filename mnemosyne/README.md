@@ -1,3 +1,145 @@
 # Mnemosyne
 
-Ontology-native memory fabric for AI assistants. (Full docs coming at the end of the build.)
+**An ontology-native memory fabric for AI assistants.**
+
+Mnemosyne is the structured memory layer that sits between LLMs and human context: a
+semantic graph of canonical entities, typed relationships, temporal state, and
+provenance that any assistant can read and write through [MCP](https://modelcontextprotocol.io).
+Models are becoming interchangeable reasoning engines — the durable layer is memory,
+identity, and continuity. Mnemosyne is that layer.
+
+```
+"DBX" ─┐
+"the lakehouse vendor" ─┼──▶ canon:company/databricks ──competitor_of──▶ Snowflake
+"Databrics" (learned) ──┘        ▲ works_at (2024-01 → 2025-06, superseded)
+                                 │ works_at (2025-06 → now)
+                            Jeremy Nelson
+```
+
+## Why this exists
+
+Today's assistant memory is vector search over chat logs: text fragments, no canonical
+identity, no relationships, no sense of time, siloed per assistant. Every assistant is
+a brilliant intern with retrograde amnesia. Mnemosyne replaces retrieval-first memory
+with **structure-first memory**:
+
+| | Vector memory | Enterprise knowledge graphs | **Mnemosyne** |
+|---|---|---|---|
+| Identity | text similarity | canonical, but org-owned | canonical **+ private overlay** |
+| Time | overwrite/append text | mostly static | validity windows + supersession |
+| Trust | none | curated | per-fact provenance & confidence |
+| Assistant access | per-vendor silo | none | any MCP client, model-agnostic |
+
+## Architecture: two tiers, one graph
+
+The core design decision is a **hard boundary between shared knowledge and private
+context**, merged at query time:
+
+```
+┌───────────────────────────── assistants (any MCP client) ─────────────────────────────┐
+│   remember · recall · resolve_entity · assert_relationship · query_graph · timeline   │
+└──────────────────────────────────────────┬────────────────────────────────────────────┘
+                                    MemoryFabric (merge layer)
+                          ┌────────────────┴─────────────────┐
+              Tier 1: canonical ontology           Tier 2: private overlay
+              shared · hosted-ready                local-first · read/write
+              opened READ-ONLY at runtime          entities, edges, memories,
+              (SQLite mode=ro today;               learned aliases, proposals —
+              Postgres behind the same             may reference canonical ids;
+              CanonicalStore Protocol)             never the reverse
+```
+
+- **The privacy boundary is structural, not policy.** The canonical tier is opened with
+  SQLite `mode=ro`; there is no code path from the fabric to a canonical write. A test
+  asserts the canonical file is *byte-identical* after a full write workload.
+- **The canonical tier is hosted-ready.** It lives behind a read-only `CanonicalStore`
+  Protocol with portable SQL — a hosted multi-tenant Postgres implementation drops in
+  without touching anything above the storage layer.
+- **Overlay extends canonical.** A private entity can `extends` a canonical one:
+  your notes, aliases ("that client"), and attributes merge over the shared record
+  at query time without ever leaving your machine.
+
+## What makes it different
+
+**Identity resolution that learns.** Mentions resolve through normalize → exact →
+alias → fuzzy stages. High-confidence fuzzy hits ("Databrics" @ 95) are accepted *and
+recorded as learned aliases* — the fabric gets better at recognizing your shorthand
+with use. Mid-confidence hits (80–91) become **merge proposals** instead of silent
+links: the write still lands on a provisional entity, and the proposal is on record
+for review. Memory pollution is a design constraint, not an afterthought.
+
+**Facts supersede; they don't overwrite.** Every entity, relationship, and memory has
+`valid_from` / `valid_to` / `superseded_by`. Asserting a new `works_at` automatically
+closes the previous one (functional relationships), and `as_of` queries answer *"what
+was true in July 2024?"*. The full history is preserved in an append-only assertion
+log written in the same transaction as every state change.
+
+**Every fact knows where it came from.** Provenance rows capture the asserting
+assistant (from the MCP handshake — never self-reported), session, server-side
+timestamp, stated confidence, and derivation path. Seed knowledge, assistant
+assertions, and inferences are permanently distinguishable.
+
+**Model-agnostic by construction.** The only surface is MCP over stdio. Claude, IDE
+agents, and local models share one cognition substrate; swapping models loses nothing.
+
+## Quickstart
+
+Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
+
+```bash
+cd mnemosyne
+uv sync
+uv run python examples/demo.py   # the whole story in 30 seconds
+uv run pytest -q                 # 41 tests, including a full stdio MCP scenario
+```
+
+Wire it into Claude Code:
+
+```bash
+claude mcp add mnemosyne -- uv run --directory /path/to/mnemosyne mnemosyne-server
+```
+
+Or any MCP client via stdio: command `uv`, args
+`run --directory /path/to/mnemosyne mnemosyne-server`. On first run the server seeds
+the canonical tier automatically. Data lives in `~/.mnemosyne/` (override with
+`MNEMOSYNE_DATA_DIR`; identify non-MCP callers with `MNEMOSYNE_ASSISTANT_ID`).
+
+## Assistant API (MCP tools)
+
+| Tool | What it does |
+|---|---|
+| `remember` | Record an observation, auto-linking mentioned entities |
+| `recall` | Search memories by text/entity/kind, optionally `as_of` a moment |
+| `resolve_entity` | Mention → canonical or private entity, with method + confidence |
+| `create_entity` | Create a private entity, optionally `extends` a canonical one |
+| `assert_relationship` | Typed edge with auto-supersession of functional facts |
+| `query_graph` | Merged two-tier graph query with direction, depth, `as_of` |
+| `get_entity_timeline` | Full append-only history of an entity, with provenance |
+| `list_ontology` | Entity types + relationship taxonomy (assistants self-discover) |
+| `review_proposals` | List/accept/reject pending identity-merge proposals |
+
+## Data model
+
+Both tiers share one schema (`storage/schema.py`): `entities` (stable ids —
+`canon:company/databricks` vs `usr_<uuid>` — aliases, attributes, confidence),
+`relationships` (typed, constrained by the ontology), `memories` (+FTS), `provenance`,
+`merge_proposals`, and the append-only `assertions` event log. The seed ontology ships
+10 entity types and 16 relationship types as data (JSON), not code — user-extensible
+taxonomies need no code changes.
+
+## Roadmap
+
+- **Hosted canonical tier** — multi-tenant Postgres behind the existing `CanonicalStore`
+  Protocol; community-governed ontology growth
+- **Embedding-assisted resolution** — semantic dedup slots into the single-matcher seam
+  in `resolution.py`
+- **Cross-device / cross-assistant sync** — the append-only assertion log is replayable
+  and mergeable by design
+- **Scoped permissions** — per-assistant namespaces and revocable memory grants on the
+  provenance foundation
+- **Inference & decay** — derived facts (`source_type=inference` is already modeled)
+  and read-time relevance scoring
+
+## License
+
+MIT
