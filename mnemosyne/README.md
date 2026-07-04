@@ -52,9 +52,12 @@ context**, merged at query time:
 - **The privacy boundary is structural, not policy.** The canonical tier is opened with
   SQLite `mode=ro`; there is no code path from the fabric to a canonical write. A test
   asserts the canonical file is *byte-identical* after a full write workload.
-- **The canonical tier is hosted-ready.** It lives behind a read-only `CanonicalStore`
-  Protocol with portable SQL — a hosted multi-tenant Postgres implementation drops in
-  without touching anything above the storage layer.
+- **The canonical tier is hosted — not just hosted-ready.** `mnemosyne-canonical` serves
+  the shared ontology over authenticated HTTP (bearer keys with per-key identity), and
+  `HttpCanonicalStore` is a drop-in remote implementation of the same `CanonicalStore`
+  Protocol: point any client at a hosted tier with two env vars
+  (`MNEMOSYNE_CANONICAL_URL`, `MNEMOSYNE_CANONICAL_API_KEY`) and nothing above the
+  storage layer changes. Postgres slots in behind the same Protocol later.
 - **Overlay extends canonical.** A private entity can `extends` a canonical one:
   your notes, aliases ("that client"), and attributes merge over the shared record
   at query time without ever leaving your machine.
@@ -66,7 +69,10 @@ alias → fuzzy stages. High-confidence fuzzy hits ("Databrics" @ 95) are accept
 recorded as learned aliases* — the fabric gets better at recognizing your shorthand
 with use. Mid-confidence hits (80–91) become **merge proposals** instead of silent
 links: the write still lands on a provisional entity, and the proposal is on record
-for review. Memory pollution is a design constraint, not an afterthought.
+for review. Memory pollution is a design constraint, not an afterthought. The matcher
+is pluggable: set `MNEMOSYNE_EMBEDDINGS=openai:<model>` (or `voyage:<model>`) to layer
+semantic similarity over lexical matching — paraphrases like "the ml notebooks vendor"
+resolve where string distance alone cannot.
 
 **Facts supersede; they don't overwrite.** Every entity, relationship, and memory has
 `valid_from` / `valid_to` / `superseded_by`. Asserting a new `works_at` automatically
@@ -90,7 +96,7 @@ Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 cd mnemosyne
 uv sync
 uv run python examples/demo.py   # the whole story in 30 seconds
-uv run pytest -q                 # 41 tests, including a full stdio MCP scenario
+uv run pytest -q                 # 68 tests: stdio MCP e2e, hosted-tier HTTP, interop
 ```
 
 Wire it into Claude Code:
@@ -99,10 +105,18 @@ Wire it into Claude Code:
 claude mcp add mnemosyne -- uv run --directory /path/to/mnemosyne mnemosyne-server
 ```
 
-Or any MCP client via stdio: command `uv`, args
-`run --directory /path/to/mnemosyne mnemosyne-server`. On first run the server seeds
-the canonical tier automatically. Data lives in `~/.mnemosyne/` (override with
+Configs for Claude Desktop, Cursor, and VS Code — plus hosting the canonical tier for
+a team — are in [docs/integrations.md](docs/integrations.md). On first run the server
+seeds the canonical tier automatically. Data lives in `~/.mnemosyne/` (override with
 `MNEMOSYNE_DATA_DIR`; identify non-MCP callers with `MNEMOSYNE_ASSISTANT_ID`).
+
+Host the shared ontology for many machines:
+
+```bash
+uv run mnemosyne-seed
+MNEMOSYNE_API_KEYS="you:mk_change_me" uv run mnemosyne-canonical   # port 8321
+# any client: MNEMOSYNE_CANONICAL_URL=... MNEMOSYNE_CANONICAL_API_KEY=... mnemosyne-server
+```
 
 ## Assistant API (MCP tools)
 
@@ -129,12 +143,14 @@ taxonomies need no code changes.
 
 ## Roadmap
 
-- **Hosted canonical tier** — multi-tenant Postgres behind the existing `CanonicalStore`
-  Protocol; community-governed ontology growth
-- **Embedding-assisted resolution** — semantic dedup slots into the single-matcher seam
-  in `resolution.py`
+- **Postgres canonical backend** — multi-tenant Postgres behind the existing
+  `CanonicalStore` Protocol (the HTTP service and auth layer are already in place);
+  community-governed ontology growth
+- **Local embedding backend** — `mnemosyne[embeddings-local]` extra behind the existing
+  `Matcher` seam; API-based backends (OpenAI/Voyage) already ship
 - **Cross-device / cross-assistant sync** — the append-only assertion log is replayable
-  and mergeable by design
+  and mergeable by design (two-assistant continuity is already proven in
+  `tests/test_continuity_e2e.py`)
 - **Scoped permissions** — per-assistant namespaces and revocable memory grants on the
   provenance foundation
 - **Inference & decay** — derived facts (`source_type=inference` is already modeled)
