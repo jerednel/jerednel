@@ -125,3 +125,7 @@ curl http://127.0.0.1:8321/v1/health
 curl -H "Authorization: Bearer mk_change_me" \
   "http://127.0.0.1:8321/v1/entities/by-name?name=databricks"
 ```
+
+A reference deployment (marketing site at `/`, canonical API at `/v1/*`) runs at
+https://mnemosyne-production-ed7b.up.railway.app — `GET /v1/health` is public;
+data endpoints require a key.
