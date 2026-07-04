@@ -27,10 +27,13 @@ _session_ids: dict[int, str] = {}
 def get_fabric() -> MemoryFabric:
     global _fabric
     if _fabric is None:
+        from mnemosyne.matching import matcher_from_env
+
         _fabric = MemoryFabric(
             canonical=canonical_store_from_env(),
             overlay=SqliteOverlayStore(overlay_db_path()),
             ontology=OntologyRegistry.load(),
+            matcher=matcher_from_env(),
         )
     return _fabric
 

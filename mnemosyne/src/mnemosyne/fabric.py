@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+from mnemosyne.matching import Matcher
 from mnemosyne.models import (
     USER_PREFIX,
     Alias,
@@ -42,11 +43,12 @@ class MemoryFabric:
         canonical: CanonicalStore,
         overlay: SqliteOverlayStore,
         ontology: OntologyRegistry | None = None,
+        matcher: Matcher | None = None,
     ):
         self.canonical = canonical
         self.overlay = overlay
         self.ontology = ontology or OntologyRegistry.load()
-        self.resolver = IdentityResolver(canonical, overlay, self.ontology)
+        self.resolver = IdentityResolver(canonical, overlay, self.ontology, matcher)
 
     # ------------------------------------------------------------------
     # entity views

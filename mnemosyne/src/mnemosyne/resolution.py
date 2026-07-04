@@ -11,8 +11,7 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
-from rapidfuzz import fuzz
-
+from mnemosyne.matching import Matcher, RapidFuzzMatcher
 from mnemosyne.models import Alias, Entity
 from mnemosyne.ontology import OntologyRegistry
 from mnemosyne.storage.base import CanonicalStore, OverlayStore
@@ -64,10 +63,12 @@ class IdentityResolver:
         canonical: CanonicalStore,
         overlay: OverlayStore,
         ontology: OntologyRegistry | None = None,
+        matcher: Matcher | None = None,
     ):
         self.canonical = canonical
         self.overlay = overlay
         self.ontology = ontology
+        self.matcher = matcher or RapidFuzzMatcher()
 
     def _type_ok(self, entity: Entity, wanted: str | None) -> bool:
         """Subtype-aware type filter: a `company` satisfies an `organization`
@@ -162,9 +163,9 @@ class IdentityResolver:
             if a.entity_id in entities  # skips type-filtered and superseded entities
         )
 
+        scores = self.matcher.score(norm, [text for text, _, _ in texts])
         best_by_entity: dict[str, Candidate] = {}
-        for text, entity_id, via_alias in texts:
-            score = fuzz.WRatio(norm, text)
+        for (text, entity_id, via_alias), score in zip(texts, scores, strict=True):
             existing = best_by_entity.get(entity_id)
             if existing is None or score > existing.score:
                 best_by_entity[entity_id] = Candidate(
