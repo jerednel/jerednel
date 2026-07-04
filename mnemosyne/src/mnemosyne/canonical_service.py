@@ -24,7 +24,8 @@ from starlette.applications import Starlette
 from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-from starlette.routing import Route
+from starlette.routing import Mount, Route
+from starlette.staticfiles import StaticFiles
 
 from mnemosyne.config import canonical_db_path
 from mnemosyne.storage.base import CanonicalStore
@@ -55,7 +56,9 @@ def keys_from_env() -> dict[str, str]:
     return keys
 
 
-def create_app(store: CanonicalStore, keys: dict[str, str]) -> Starlette:
+def create_app(
+    store: CanonicalStore, keys: dict[str, str], site_dir: Path | None = None
+) -> Starlette:
     if not keys:
         raise ValueError("Refusing to serve without API keys (fail closed).")
 
@@ -148,21 +151,24 @@ def create_app(store: CanonicalStore, keys: dict[str, str]) -> Starlette:
             {"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers
         )
 
-    return Starlette(
-        routes=[
-            Route("/v1/health", health),
-            Route("/v1/entities/get", get_entity),
-            Route("/v1/entities/by-name", entities_by_name),
-            Route("/v1/entities", all_entities),
-            Route("/v1/aliases/by-name", aliases_by_name),
-            Route("/v1/aliases/for-entity", aliases_for_entity),
-            Route("/v1/aliases", all_aliases),
-            Route("/v1/relationships", relationships),
-            Route("/v1/provenance/get", get_provenance),
-            Route("/v1/assertions", assertions),
-        ],
-        exception_handlers={HTTPException: http_exception},
-    )
+    routes: list = [
+        Route("/v1/health", health),
+        Route("/v1/entities/get", get_entity),
+        Route("/v1/entities/by-name", entities_by_name),
+        Route("/v1/entities", all_entities),
+        Route("/v1/aliases/by-name", aliases_by_name),
+        Route("/v1/aliases/for-entity", aliases_for_entity),
+        Route("/v1/aliases", all_aliases),
+        Route("/v1/relationships", relationships),
+        Route("/v1/provenance/get", get_provenance),
+        Route("/v1/assertions", assertions),
+    ]
+    if site_dir is not None:
+        # Marketing site at "/" (unauthenticated static files). Mounted after
+        # the /v1 routes so the API always takes precedence.
+        routes.append(Mount("/", app=StaticFiles(directory=str(site_dir), html=True)))
+
+    return Starlette(routes=routes, exception_handlers={HTTPException: http_exception})
 
 
 def app_from_env(db_path: Path | None = None) -> Starlette:
@@ -172,16 +178,22 @@ def app_from_env(db_path: Path | None = None) -> Starlette:
 
         build_canonical_db(path)
     store = SqliteCanonicalStore(path, check_same_thread=False)
-    return create_app(store, keys_from_env())
+    site_raw = os.environ.get("MNEMOSYNE_SITE_DIR")
+    site_dir = Path(site_raw) if site_raw and Path(site_raw).is_dir() else None
+    return create_app(store, keys_from_env(), site_dir=site_dir)
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Serve the Mnemosyne canonical ontology tier.")
-    parser.add_argument("--host", default=os.environ.get("MNEMOSYNE_CANONICAL_HOST", "127.0.0.1"))
+    # PaaS convention (Railway, Heroku, ...): PORT is set and the service must
+    # bind all interfaces; locally we default to loopback on 8321.
+    paas_port = os.environ.get("PORT")
+    default_host = "0.0.0.0" if paas_port else "127.0.0.1"  # noqa: S104
+    parser.add_argument("--host", default=os.environ.get("MNEMOSYNE_CANONICAL_HOST", default_host))
     parser.add_argument(
         "--port",
         type=int,
-        default=int(os.environ.get("MNEMOSYNE_CANONICAL_PORT", DEFAULT_PORT)),
+        default=int(paas_port or os.environ.get("MNEMOSYNE_CANONICAL_PORT", DEFAULT_PORT)),
     )
     parser.add_argument("--db", type=Path, default=None)
     args = parser.parse_args(argv)

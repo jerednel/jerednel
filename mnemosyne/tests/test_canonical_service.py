@@ -120,3 +120,34 @@ def test_missing_param_400(service_client):
     response = service_client.get("/v1/entities/get", headers=AUTH)
     assert response.status_code == 400
     assert "Missing query parameter" in response.json()["detail"]
+
+
+def test_site_served_when_configured(canonical_db, tmp_path):
+    from pathlib import Path
+
+    from starlette.testclient import TestClient
+
+    from mnemosyne.storage.sqlite_canonical import SqliteCanonicalStore
+
+    site_dir = tmp_path / "site"
+    site_dir.mkdir()
+    (site_dir / "index.html").write_text("<h1>Mnemosyne marketing</h1>")
+    store = SqliteCanonicalStore(canonical_db, check_same_thread=False)
+    app = create_app(store, dict(API_KEYS), site_dir=Path(site_dir))
+    with TestClient(app) as client:
+        # Site at "/" is public...
+        home = client.get("/")
+        assert home.status_code == 200
+        assert "Mnemosyne marketing" in home.text
+        # ...while the API keeps precedence and stays authenticated.
+        assert client.get("/v1/entities").status_code == 401
+        assert client.get("/v1/health").status_code == 200
+        entity = client.get(
+            "/v1/entities/get", params={"id": "canon:company/databricks"}, headers=AUTH
+        )
+        assert entity.status_code == 200
+    store.close()
+
+
+def test_no_site_dir_leaves_root_unrouted(service_client):
+    assert service_client.get("/").status_code == 404
